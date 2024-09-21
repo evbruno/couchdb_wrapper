@@ -2,14 +2,35 @@ defmodule CouchdbWrapper.PageResponse do
   defstruct rows: [], next_key: nil, error: nil, total_rows: 0
 
   @moduledoc ~S"""
-  A struct to represent the response from CouchDB API.
+  A struct to represent the all_docs responses from CouchDB API.
   """
+end
+
+defmodule CouchdbWrapper.ChangesResponse do
+  defstruct rows: [], last_seq: nil, error: nil, pending: 0
+
+  @moduledoc ~S"""
+  A struct to represent the changes responses from CouchDB API.
+  """
+end
+
+defmodule CouchdbWrapper.IdAndRev do
+  @enforce_keys [:id, :rev]
+  defstruct [:id, :rev]
+
+  @moduledoc ~S"""
+  A struct to represent id+rev pair on Couchdb
+  """
+
+  def from_doc(doc), do: %CouchdbWrapper.IdAndRev{id: doc["id"], rev: doc["value"]["rev"]}
+  def new(id, rev), do: %CouchdbWrapper.IdAndRev{id: id, rev: rev}
 end
 
 defmodule CouchdbWrapper do
   use Tesla
   require Logger
   alias CouchdbWrapper.PageResponse, as: Response
+  alias CouchdbWrapper.ChangesResponse, as: Changes
 
   @moduledoc ~S"""
   CouchDB Wrapper.
@@ -35,23 +56,22 @@ defmodule CouchdbWrapper do
   def all_docs_stream(database, options \\ []) do
     Stream.resource(
       fn -> :start end,
-      fn el ->
-        case el do
-          :start ->
-            handle_all_docs_stream(options, database)
-
-          nk when nk != nil ->
-            options
-            |> Keyword.put(:start_key, nk)
-            |> handle_all_docs_stream(database)
-
-          _ ->
-            {:halt, el}
-        end
-      end,
+      &fetch_next_page_doc_stream(&1, database, options),
       fn _ -> :ok end
     )
   end
+
+  defp fetch_next_page_doc_stream(:start, database, options) do
+    handle_all_docs_stream(options, database)
+  end
+
+  defp fetch_next_page_doc_stream(next_key, database, options) when next_key != nil do
+    options
+    |> Keyword.put(:start_key, next_key)
+    |> handle_all_docs_stream(database)
+  end
+
+  defp fetch_next_page_doc_stream(_, _, _), do: {:halt, nil}
 
   defp handle_all_docs_stream(options, database) do
     case all_docs(database, options) do
@@ -67,7 +87,7 @@ defmodule CouchdbWrapper do
   @doc ~S"""
   Loads all docs from CouchDB
 
-  API: `/{database}/_all_docs`
+  API: `GET /{database}/_all_docs`
 
   ## Options
 
@@ -144,13 +164,223 @@ defmodule CouchdbWrapper do
 
   defp last_key(rows, options) do
     if length(rows) > limit(options) do
-      if include_docs?(options) do
-        List.last(rows)["doc"]["_id"]
-      else
-        List.last(rows)["id"]
-      end
+      List.last(rows)["id"]
     else
       nil
+    end
+  end
+
+  @doc ~S"""
+  Deletes a list of documents from a database.
+
+  API: `POST /{database}/_bulk_docs`
+
+  Returns `:ok`.
+
+  ## Examples
+
+      iex> CouchdbWrapper.bulk_delete_docs(
+        "database_name",
+        [ CouchdbWrapper.IdAndRev.new("id1", "1-rev1") ]
+      )
+
+      {:ok,
+       [
+        %{
+          "id" => "id1",
+          "ok" => true,
+          "rev" => "2-rev2"
+        }
+      ]}
+
+  """
+  def bulk_delete_docs(database, ids_and_revs) do
+    data =
+      ids_and_revs
+      |> Enum.map(fn row -> %{_id: row.id, _rev: row.rev, _deleted: true} end)
+
+    post("/#{database}/_bulk_docs", %{docs: data}) |> handle_bulk_delete_docs()
+  end
+
+  defp handle_bulk_delete_docs({:ok, %Tesla.Env{status: 201, body: rows}}) do
+    if Enum.any?(rows, fn row -> row["error"] != nil end) do
+      IO.warn("Bulk deletion did not complete for some ids/revs")
+      Logger.debug("Bulk deletion did not complete for some ids/revs: #{inspect(rows)}")
+      {:error, rows}
+    else
+      Logger.debug("Bulk deletion completed for #{Enum.count(rows)}")
+      {:ok, rows}
+    end
+  end
+
+  defp handle_bulk_delete_docs({:ok, %Tesla.Env{body: rows}}) do
+    Logger.debug("Bulk deletion did not complete for some ids/revs: #{inspect(rows)}")
+    {:error, rows}
+  end
+
+  @doc ~S"""
+  Purges a map of documents from a database, key => [rev1, rev2, ...].
+
+  API: `POST /{database}/_purge`
+
+  Current tests are showing a CouchDB payload limit. So a guard was added.
+
+  Returns `:ok`.
+
+  ## Examples
+
+      iex> CouchdbWrapper.bulk_purge_docs(
+        "database_name",
+        %{
+          "id1": ["1-rev1"],
+          "id2": ["2-rev"]
+        }
+      )
+
+      {:ok, %{"id1" => ["2-rev2"], "id2" => ["2-rev2"]}}
+
+  """
+  def bulk_purge_docs(_, [rows_to_delete]) when map_size(rows_to_delete) > 1000,
+    do: {:error, "Too many rows to delete"}
+
+  def bulk_purge_docs(database, rows_to_delete) do
+    post("/#{database}/_purge", rows_to_delete) |> handle_purge_docs()
+  end
+
+  defp handle_purge_docs({:ok, %Tesla.Env{status: 201, body: %{"purged" => purged}}}) do
+    Logger.debug("Bulk purge completed for #{Enum.count(purged)} elements (batch)")
+    {:ok, purged}
+  end
+
+  defp handle_purge_docs({:ok, %Tesla.Env{body: body}}) do
+    Logger.debug("Bulk purge did not complete: #{inspect(body)}")
+    {:error, body}
+  end
+
+  @doc ~S"""
+  API: `POST /{database}/_compact`
+  """
+  def compact(database) do
+    # FIXME handle result here, result is supposed to be 202
+    post("/#{database}/_compact", [])
+  end
+
+  @doc ~S"""
+  API: `POST /{database}/_compact/{design_doc}`
+  """
+  def compact(database, design_doc) do
+    # FIXME handle result here, result is supposed to be 202
+    post("/#{database}/_compact/#{design_doc}", [])
+  end
+
+  @doc ~S"""
+  API: `POST /{database}/_view_cleanup/`
+  """
+  def cleanup(database) do
+    # FIXME handle result here, result is supposed to be 202
+    post("/#{database}/_view_cleanup", [])
+  end
+
+  @doc ~S"""
+  Loads all doc changes from CouchDB
+
+  API: `GET /{database}/_changes`
+
+  ## Options
+
+    * `:limit` (integer) defaults to 100
+    * `:include_docs?` (boolean) - defaults to `true`
+    * `:last_seq` (string) - start key for the query (maps to `last-event-id`)
+
+  """
+  def changes(database, options \\ [include_docs?: false]) do
+    url = build_changes_url(database, options)
+    Logger.debug("changes_url: #{url}")
+
+    get(url) |> handle_changes(options)
+  end
+
+  defp handle_changes(
+         {:ok,
+          %Tesla.Env{
+            status: 200,
+            body: %{
+              "results" => rows,
+              "last_seq" => last_seq,
+              "pending" => pending
+            }
+          }},
+         options
+       ) do
+    rows
+    |> handle_last_page_changes(
+      options,
+      %Changes{rows: rows, pending: pending, last_seq: last_seq}
+    )
+  end
+
+  defp handle_changes({_, res}, _options), do: {:error, %Changes{error: res}}
+
+  defp handle_last_page_changes([], _, res) do
+    Logger.debug("Loaded empty last page single row, total_rows: #{inspect(res)}")
+    {:ok, %Changes{}}
+  end
+
+  defp handle_last_page_changes(rows, _options, %Changes{} = c) do
+    Logger.debug(
+      "Loaded changes rows: #{length(rows)} last_seq: #{c.last_seq} pending: #{c.pending}"
+    )
+
+    {:ok, %Changes{c | rows: rows, last_seq: c.last_seq, pending: c.pending}}
+  end
+
+  defp build_changes_url(database, options) do
+    params =
+      [
+        "limit=#{limit(options)}",
+        "include_docs=#{include_docs?(options)}"
+      ] ++
+        build_key_param("last-event-id", options[:last_seq])
+
+    "/#{database}/_changes?" <> Enum.join(params, "&")
+  end
+
+  @doc ~S"""
+  Loads all changes from CouchDB, paginating as a stream.
+
+  See `changes/2` for more details.
+
+  """
+  def changes_stream(database, options \\ [include_docs?: false]) do
+    Stream.resource(
+      fn -> {:start, nil} end,
+      fn el ->
+        # IO.inspect(el, label: "stream.el")
+        case el do
+          {:start, _} ->
+            handle_changes_stream(options, database)
+
+          {ls, pending} when ls != nil and pending > 0 ->
+            options
+            |> Keyword.put(:last_seq, ls)
+            |> handle_changes_stream(database)
+
+          _ ->
+            {:halt, el}
+        end
+      end,
+      fn _ -> :ok end
+    )
+  end
+
+  defp handle_changes_stream(options, database) do
+    case changes(database, options) do
+      {:ok, %Changes{rows: rows, last_seq: last_seq, pending: pending}} ->
+        {rows, {last_seq, pending}}
+
+      {:error, %Changes{error: error}} ->
+        Logger.warning("Error loading changes with #{options}: #{error}")
+        {:halt, error}
     end
   end
 end
