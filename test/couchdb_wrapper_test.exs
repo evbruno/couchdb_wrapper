@@ -91,41 +91,30 @@ defmodule CouchdbWrapperTest do
     :ok
   end
 
-  defp json_docs(), do: File.read!("test/fixtures/all_docs_0.json") |> Jason.decode!()
+  defp json_docs, do: File.read!("test/fixtures/all_docs_0.json") |> Jason.decode!()
 
   defp json_docs(limit, start) do
     doc = json_docs()
-
-    rows =
-      case start do
-        "" ->
-          doc["rows"] |> Enum.take(limit)
-
-        _ ->
-          r = doc["rows"]
-          idx = Enum.find_index(r, fn x -> x["id"] == start end)
-          r |> Enum.slice(idx, limit)
-      end
-
+    rows = paginate_rows(doc["rows"], limit, start)
     Map.put(doc, "rows", rows)
   end
 
-  defp json_no_docs(), do: File.read!("test/fixtures/all_docs_1.json") |> Jason.decode!()
+  defp json_no_docs, do: File.read!("test/fixtures/all_docs_1.json") |> Jason.decode!()
 
   defp json_no_docs(limit, start) do
     doc = json_no_docs()
-
-    rows =
-      case start do
-        "" ->
-          doc["rows"] |> Enum.take(limit)
-
-        _ ->
-          r = doc["rows"]
-          idx = Enum.find_index(r, fn x -> x["id"] == start end)
-          r |> Enum.slice(idx, limit)
-      end
-
+    rows = paginate_rows(doc["rows"], limit, start)
     Map.put(doc, "rows", rows)
+  end
+
+  defp paginate_rows(rows, limit, start) do
+    case start do
+      "" ->
+        rows |> Enum.take(limit)
+
+      _ ->
+        idx = Enum.find_index(rows, fn x -> x["id"] == start end)
+        rows |> Enum.slice(idx, limit)
+    end
   end
 end
