@@ -1,11 +1,19 @@
 defmodule CouchdbWrapper.PageResponse do
   defstruct rows: [], next_key: nil, error: nil, total_rows: 0
+
+  @moduledoc ~S"""
+  A struct to represent the response from CouchDB API.
+  """
 end
 
 defmodule CouchdbWrapper do
   use Tesla
   require Logger
   alias CouchdbWrapper.PageResponse, as: Response
+
+  @moduledoc ~S"""
+  CouchDB Wrapper.
+  """
 
   @base_url System.get_env("COUCHDB_URL") || "http://localhost:5984/"
   @username System.get_env("COUCHDB_USERNAME") || "admin"
