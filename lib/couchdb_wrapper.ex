@@ -19,6 +19,44 @@ defmodule CouchdbWrapper do
   # plug(Tesla.Middleware.Logger)
 
   @doc ~S"""
+  Loads all docs from CouchDB, paginating as a stream.
+
+  See `all_docs/2` for more details.
+
+  """
+  def all_docs_stream(database, options \\ []) do
+    Stream.resource(
+      fn -> :start end,
+      fn el ->
+        case el do
+          :start ->
+            handle_all_docs_stream(options, database)
+
+          nk when nk != nil ->
+            options
+            |> Keyword.put(:start_key, nk)
+            |> handle_all_docs_stream(database)
+
+          _ ->
+            {:halt, el}
+        end
+      end,
+      fn _ -> :ok end
+    )
+  end
+
+  defp handle_all_docs_stream(options, database) do
+    case all_docs(database, options) do
+      {:ok, %Response{rows: rows, next_key: next_key}} ->
+        {rows, next_key}
+
+      {:error, %Response{error: error}} ->
+        Logger.warning("Error loading all_docs with #{options}: #{error}")
+        {:halt, error}
+    end
+  end
+
+  @doc ~S"""
   Loads all docs from CouchDB
 
   API: `/{database}/_all_docs`
@@ -63,10 +101,10 @@ defmodule CouchdbWrapper do
     {:ok, %Response{}}
   end
 
-  defp handle_last_page_all_docs([_], _options, response) do
-    Logger.debug("Loaded last page single row, total_rows: #{response.total_rows}")
-    {:ok, %Response{}}
-  end
+  # defp handle_last_page_all_docs([_], _options, response) do
+  #   Logger.debug("Loaded last page single row, total_rows: #{response.total_rows}")
+  #   {:ok, %Response{}}
+  # end
 
   defp handle_last_page_all_docs(rows, options, response) do
     Logger.debug("Loaded all_docs rows: #{length(rows)}")

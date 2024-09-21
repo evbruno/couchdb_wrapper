@@ -35,10 +35,22 @@ defmodule CouchdbWrapperTest do
     end
 
     test "all_docs/2 paginate w/ start_key" do
-      call_test(1, "00002", "00003", "00001")
-      call_test(2, "00002", "00004", "00001")
-      call_test(8, "00002", "00010", "00001")
-      call_test(9, "00002", nil, "00001")
+      call_test(1, "00001", "00002", "00001")
+      call_test(2, "00001", "00003", "00001")
+      call_test(8, "00001", "00009", "00001")
+      call_test(9, "00001", "00010", "00001")
+      call_test(10, "00001", nil, "00001")
+
+      call_test(5, "00005", "00010", "00005")
+      call_test(6, "00005", nil, "00005")
+    end
+
+    test "all_docs_stream/2" do
+      1..11
+      |> Enum.each(fn limit ->
+        rows = CouchdbWrapper.all_docs_stream("foo", limit: limit) |> Enum.count()
+        assert rows == 10
+      end)
     end
   end
 
@@ -86,10 +98,14 @@ defmodule CouchdbWrapperTest do
 
     rows =
       case start do
-        nil -> doc["rows"]
-        _ -> doc["rows"] |> Enum.drop_while(fn x -> x["id"] == start end)
+        "" ->
+          doc["rows"] |> Enum.take(limit)
+
+        _ ->
+          r = doc["rows"]
+          idx = Enum.find_index(r, fn x -> x["id"] == start end)
+          r |> Enum.slice(idx, limit)
       end
-      |> Enum.take(limit)
 
     Map.put(doc, "rows", rows)
   end
@@ -101,10 +117,14 @@ defmodule CouchdbWrapperTest do
 
     rows =
       case start do
-        nil -> doc["rows"]
-        _ -> doc["rows"] |> Enum.drop_while(fn x -> x["id"] == start end)
+        "" ->
+          doc["rows"] |> Enum.take(limit)
+
+        _ ->
+          r = doc["rows"]
+          idx = Enum.find_index(r, fn x -> x["id"] == start end)
+          r |> Enum.slice(idx, limit)
       end
-      |> Enum.take(limit)
 
     Map.put(doc, "rows", rows)
   end
