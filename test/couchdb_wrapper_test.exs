@@ -33,12 +33,22 @@ defmodule CouchdbWrapperTest do
       call_test(9, "00001", "00010")
       call_test(10, "00001", nil)
     end
+
+    test "all_docs/2 paginate w/ start_key" do
+      call_test(1, "00002", "00003", "00001")
+      call_test(2, "00002", "00004", "00001")
+      call_test(8, "00002", "00010", "00001")
+      call_test(9, "00002", nil, "00001")
+    end
   end
 
-  defp call_test(limit, expected_id, expected_next_key, start_key \\ nil) do
+  defp call_test(limit, expected_id, expected_next_key, start_key \\ "") do
     [true, false]
     |> Enum.each(fn include_docs? ->
-      opts = [limit: limit, include_docs?: include_docs?, start_key: start_key]
+      opts =
+        [limit: limit, include_docs?: include_docs?] ++
+          if start_key != "", do: [start_key: start_key], else: []
+
       {:ok, %Res{} = res} = CouchdbWrapper.all_docs("foo", opts)
       assert res.total_rows == 123
       assert length(res.rows) == limit
@@ -49,19 +59,21 @@ defmodule CouchdbWrapperTest do
 
   setup do
     all_docs_reg =
-      ~r/http:\/\/localhost:5984\/foo\/_all_docs\?limit\=(?<limit>\d+)&include_docs=(?<inc>true|false)/
+      ~r/^http:\/\/localhost:5984\/foo\/_all_docs\?limit\=(?<limit>\d+)&include_docs=(?<inc>true|false)(&startkey=%22(?<sk>\w+)%22)?$/
 
     mock(fn
       %{
         method: :get,
         url: <<"http://localhost:5984/foo/_all_docs?limit=", _rest::bitstring>> = url0
       } ->
-        %{"limit" => l, "inc" => i} = Regex.named_captures(all_docs_reg, url0)
+        capture = Regex.named_captures(all_docs_reg, url0)
+        %{"limit" => l, "inc" => i, "sk" => k} = capture
 
         case i do
-          "true" -> json(json_docs(String.to_integer(l)))
-          "false" -> json(json_no_docs(String.to_integer(l)))
+          "true" -> json_docs(String.to_integer(l), k)
+          "false" -> json_no_docs(String.to_integer(l), k)
         end
+        |> json()
     end)
 
     :ok
@@ -69,15 +81,31 @@ defmodule CouchdbWrapperTest do
 
   defp json_docs(), do: File.read!("test/fixtures/all_docs_0.json") |> Jason.decode!()
 
-  defp json_docs(limit) do
-    j = json_docs()
-    Map.put(j, "rows", j["rows"] |> Enum.take(limit))
+  defp json_docs(limit, start) do
+    doc = json_docs()
+
+    rows =
+      case start do
+        nil -> doc["rows"]
+        _ -> doc["rows"] |> Enum.drop_while(fn x -> x["id"] == start end)
+      end
+      |> Enum.take(limit)
+
+    Map.put(doc, "rows", rows)
   end
 
   defp json_no_docs(), do: File.read!("test/fixtures/all_docs_1.json") |> Jason.decode!()
 
-  defp json_no_docs(limit) do
-    j = json_no_docs()
-    Map.put(j, "rows", j["rows"] |> Enum.take(limit))
+  defp json_no_docs(limit, start) do
+    doc = json_no_docs()
+
+    rows =
+      case start do
+        nil -> doc["rows"]
+        _ -> doc["rows"] |> Enum.drop_while(fn x -> x["id"] == start end)
+      end
+      |> Enum.take(limit)
+
+    Map.put(doc, "rows", rows)
   end
 end
