@@ -29,8 +29,8 @@ end
 defmodule CouchdbWrapper do
   use Tesla
   require Logger
-  alias CouchdbWrapper.PageResponse, as: Response
   alias CouchdbWrapper.ChangesResponse, as: Changes
+  alias CouchdbWrapper.PageResponse, as: AllDocs
 
   @moduledoc ~S"""
   CouchDB Wrapper.
@@ -75,11 +75,11 @@ defmodule CouchdbWrapper do
 
   defp handle_all_docs_stream(options, database) do
     case all_docs(database, options) do
-      {:ok, %Response{rows: rows, next_key: next_key}} ->
+      {:ok, %AllDocs{rows: rows, next_key: next_key}} ->
         {rows, next_key}
 
-      {:error, %Response{error: error}} ->
-        Logger.warning("Error loading all_docs with #{options}: #{error}")
+      {:error, %AllDocs{error: error}} ->
+        Logger.warning("Error loading all_docs with #{inspect(options)}: #{inspect(error)}")
         {:halt, error}
     end
   end
@@ -115,29 +115,33 @@ defmodule CouchdbWrapper do
     rows
     |> handle_last_page_all_docs(
       options,
-      %Response{rows: rows, total_rows: total_rows}
+      %AllDocs{rows: rows, total_rows: total_rows}
     )
   end
 
+  defp handle_all_docs({_op, %Tesla.Env{body: body}}, _options) do
+    {:error, %AllDocs{error: body}}
+  end
+
   defp handle_all_docs({_op, res}, _options) do
-    {:error, %Response{error: res}}
+    {:error, %AllDocs{error: res}}
   end
 
   #  if empty or single row, we are done
   defp handle_last_page_all_docs([], _options, response) do
     Logger.debug("Loaded empty last page single row, total_rows: #{response.total_rows}")
-    {:ok, %Response{}}
+    {:ok, %AllDocs{}}
   end
 
   # defp handle_last_page_all_docs([_], _options, response) do
   #   Logger.debug("Loaded last page single row, total_rows: #{response.total_rows}")
-  #   {:ok, %Response{}}
+  #   {:ok, %AllDocs{}}
   # end
 
   defp handle_last_page_all_docs(rows, options, response) do
     Logger.debug("Loaded all_docs rows: #{length(rows)}")
     ret = Enum.take(rows, limit(options))
-    {:ok, %Response{response | rows: ret, next_key: last_key(rows, options)}}
+    {:ok, %AllDocs{response | rows: ret, next_key: last_key(rows, options)}}
   end
 
   defp build_all_docs_url(database, options) do
@@ -319,6 +323,9 @@ defmodule CouchdbWrapper do
     )
   end
 
+  defp handle_changes({:ok, %Tesla.Env{body: body}}, _options),
+    do: {:error, %Changes{error: body}}
+
   defp handle_changes({_, res}, _options), do: {:error, %Changes{error: res}}
 
   defp handle_last_page_changes([], _, res) do
@@ -379,7 +386,7 @@ defmodule CouchdbWrapper do
         {rows, {last_seq, pending}}
 
       {:error, %Changes{error: error}} ->
-        Logger.warning("Error loading changes with #{options}: #{error}")
+        Logger.warning("Error loading changes with #{inspect(options)}: #{inspect(error)}")
         {:halt, error}
     end
   end
