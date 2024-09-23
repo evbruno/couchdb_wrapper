@@ -244,7 +244,7 @@ defmodule CouchdbWrapper do
       {:ok, %{"id1" => ["2-rev2"], "id2" => ["2-rev2"]}}
 
   """
-  def bulk_purge_docs(_, [rows_to_delete]) when map_size(rows_to_delete) > 1000,
+  def bulk_purge_docs(_, [rows_to_delete]) when map_size(rows_to_delete) > 100,
     do: {:error, "Too many rows to delete"}
 
   def bulk_purge_docs(database, rows_to_delete) do

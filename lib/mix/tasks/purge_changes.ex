@@ -37,9 +37,11 @@ defmodule Mix.Tasks.Purge.Changes do
     |> Stream.chunk_every(100)
     |> Stream.each(fn chunk ->
       Mix.shell().info("Wiping #{length(chunk)} changes from #{database}...")
+
       case CouchdbWrapper.bulk_purge_docs(database, Map.new(chunk)) do
         {:ok, _} -> Mix.shell().info("... Deleted")
       end
+
       # Process.sleep(5_000)
     end)
     |> Stream.run()

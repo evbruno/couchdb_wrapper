@@ -28,6 +28,32 @@ Lookup on  `<database>/_changes` where `deleted: true`
 mix purge.changes database_name
 ```
 
+### Purge ALL documents
+
+```bash
+mix purge.docs database_name
+```
+
+### Purge SOME documents
+
+We can add extra "predicates" to filter what we want to purge.
+
+```bash
+mix purge.docs database_name p1 p2 ...pn
+```
+
+Some valid predicates:
+
+  - `doc.age:gt:20` (`doc.age` greater than `20` - a `number`)
+  - `doc._id:eq:1234567` (`doc._id` equals to `1234567`)
+  - `doc._id:in:1,2,3` (`doc.id` is equal to `1` or `2` or `3`,)
+  - `doc.reply_to:exists` (the field `doc.reply_to` exists in the doc)
+  
+See [the tests](/test/predicate_test.exs) for more examples.
+
+**Note**: the task purge.docs will also call the `/<database>/_compact` and `<database>/_view_cleanup` endpoints once is done.
+
+
 ## API Usage
 
 Loads the docs from database `my_db` with `CouchdbWrapper.all_docs/1` and `CouchdbWrapper.all_docs/2`. 

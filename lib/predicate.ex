@@ -3,22 +3,48 @@ defmodule Predicate do
     # Thanks CoPilot for your hardwork ! 🤖
     case p do
       # string representation
-      {field, :eq, value} -> field_path(obj, field) |> to_string == value
-      {field, :ne, value} -> field_path(obj, field) |> to_string != value
-      {field, :in, values} -> Enum.member?(values, field_path(obj, field) |> to_string)
-      {field, :nin, values} -> !Enum.member?(values, field_path(obj, field) |> to_string)
-      {field, :regex, regex} -> Regex.match?(~r/#{regex}/, field_path(obj, field) |> to_string)
+      {field, :eq, value} ->
+        field_path(obj, field) |> to_string == value
+
+      {field, :ne, value} ->
+        field_path(obj, field) |> to_string != value
+
+      {field, :in, values} ->
+        Enum.member?(values, field_path(obj, field) |> to_string)
+
+      {field, :nin, values} ->
+        !Enum.member?(values, field_path(obj, field) |> to_string)
+
+      {field, :regex, regex} ->
+        Regex.match?(~r/#{regex}/, field_path(obj, field) |> to_string)
+
       # cast to number
-      {field, :gt, value} -> field_path(obj, field) > value
-      {field, :gte, value} -> field_path(obj, field) >= value
-      {field, :lt, value} -> field_path(obj, field) < value
-      {field, :lte, value} -> field_path(obj, field) <= value
-      {field, :mod, {divisor, remainder}} -> rem(field_path(obj, field), divisor) == remainder
+      {field, :gt, value} ->
+        field_path(obj, field) > value
+
+      {field, :gte, value} ->
+        field_path(obj, field) >= value
+
+      {field, :lt, value} ->
+        field_path(obj, field) < value
+
+      {field, :lte, value} ->
+        field_path(obj, field) <= value
+
+      {field, :mod, {divisor, remainder}} ->
+        rem(field_path(obj, field), divisor) == remainder
+
       # string based operations
-      {field, :elem, index} -> Enum.at(field_path(obj, field), index) != nil
-      {field, :size, size} -> length(field_path(obj, field)) == size
+      {field, :elem, index} ->
+        Enum.at(field_path(obj, field), index) != nil
+
+      {field, :size, size} ->
+        length(field_path(obj, field)) == size
+
       # else....
-      {field, :exists} -> Map.has_key?(obj, field)
+      {field, :exists} ->
+        field_path(obj, field) != nil
+        # Map.has_key?(obj, field)
     end
   end
 
@@ -70,9 +96,9 @@ defmodule Predicate do
     end
   end
 
-  def field_path(obj, keys), do:
+  def field_path(obj, keys),
     # TODO: Kernel.get_in/2 does not work for `get_in(%{"foo" => %{"bar" => "11"}}, ["foo", "bar"])`
-    get_nested(obj, String.split(keys, ".", trim: true))
+    do: get_nested(obj, String.split(keys, ".", trim: true))
 
   defp get_nested(obj, _) when not is_map(obj),
     do: nil
