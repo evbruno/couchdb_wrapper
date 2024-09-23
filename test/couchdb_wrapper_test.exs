@@ -1,5 +1,5 @@
 defmodule CouchdbWrapperTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   import Tesla.Mock
   alias CouchdbWrapper.PageResponse, as: Res
 
