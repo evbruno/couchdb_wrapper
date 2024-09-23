@@ -6,8 +6,29 @@ Just a CouchDB wrapper.
 
 _..trying some Elixir stuff.._ 😉 🇧🇷
 
+## Tasks
 
-## Usage
+The main goal for this project is to purge/delete data from CouchDB.
+
+We have a few tools (tasks) for this.
+
+Note: setup env vars to configure the Wrapper:
+
+```bash
+$COUCHDB_URL      # defaults to "http://localhost:5984/"
+$COUCHDB_USERNAME # defaults to "admin"
+$COUCHDB_PASSWORD # defaults to "admin"
+```
+
+### Purge deleted documents
+
+Lookup on  `<database>/_changes` where `deleted: true`
+
+```bash
+mix purge.changes database_name
+```
+
+## API Usage
 
 Loads the docs from database `my_db` with `CouchdbWrapper.all_docs/1` and `CouchdbWrapper.all_docs/2`. 
 
