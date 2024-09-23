@@ -9,43 +9,53 @@ defmodule Mix.Tasks.Purge.Changes do
     It will purge all the documents that are marked as `deleted: true` on the API `<database>/_changes`
 
   """
+  require Logger
   use Mix.Task
 
   @shortdoc "Delete all deleted /_changes"
   def run(args) do
-    # Logger.configure(level: :info)
+    Logger.configure(level: :info)
 
+    validate_args(args)
+
+    database = hd(args)
+    {prev, file, content} = TaskUtils.has_previous_run?(hd(System.argv()), database)
+
+    pids = TaskUtils.start(file)
+    opts = build_opts(prev, content)
+
+    database
+    |> CouchdbWrapper.changes_stream(opts)
+    |> process_changes(pids, database)
+
+    TaskUtils.stop(pids)
+
+    Mix.shell().info("\nDone.")
+  end
+
+  defp validate_args(args) do
     if length(args) < 1 do
       Mix.shell().error("Usage: mix purge.changes <database>")
       System.halt(1)
     end
+  end
 
-    database = hd(args)
+  defp build_opts(true, content), do: [last_seq: content]
+  defp build_opts(_, _), do: []
 
-    Mix.shell().info("Going to purge all changes from #{database}...")
-
-    if !Mix.shell().yes?("Are you sure?") do
-      Mix.shell().info("Aborted.")
-      System.halt(1)
-    end
-
-    database
-    |> CouchdbWrapper.changes_stream()
+  defp process_changes(stream, pids, database) do
+    stream
+    |> TaskUtils.step(pids, "seq")
     |> Stream.filter(& &1["deleted"])
-    |> Stream.take(5)
-    |> Stream.map(fn x -> {x["id"], [hd(x["changes"])["rev"]]} end)
+    |> Stream.map(&{&1["id"], [hd(&1["changes"])["rev"]]})
     |> Stream.chunk_every(100)
-    |> Stream.each(fn chunk ->
-      Mix.shell().info("Wiping #{length(chunk)} changes from #{database}...")
-
-      case CouchdbWrapper.bulk_purge_docs(database, Map.new(chunk)) do
-        {:ok, _} -> Mix.shell().info("... Deleted")
-      end
-
-      # Process.sleep(5_000)
-    end)
+    |> Stream.each(&bulk_purge(database, &1))
     |> Stream.run()
+  end
 
-    Mix.shell().info("Done.")
+  defp bulk_purge(database, chunk) do
+    case CouchdbWrapper.bulk_purge_docs(database, Map.new(chunk)) do
+      {:ok, _} -> IO.write("\rX")
+    end
   end
 end
