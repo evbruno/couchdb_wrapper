@@ -401,4 +401,61 @@ defmodule CouchdbWrapper do
         {:halt, error}
     end
   end
+
+  @doc ~S"""
+  Inserts multiple documents into the specified database in bulk.
+
+  It makes a POST request to the database's `/_bulk_docs` endpoint to insert the documents.
+  Returns `{:ok, rows}` if all documents are inserted successfully.
+  If any document encounters an error, returns `{:error, grouped_errors}`
+  where `grouped_errors` contains documents grouped by their error type.
+
+  ## Parameters
+    - database: The name of the database (string).
+    - docs: A list of documents to insert.
+
+  ## Returns
+    - `{:ok, rows}`: When all documents are successfully inserted.
+    - `{:error, grouped_errors}`: When some or all documents failed to insert, grouped by error.
+    - `{:error, reason}`: If the bulk insert request fails.
+
+  ## Examples
+
+      iex> CouchdbWrapper.bulk_insert_docs(
+        "database_name",
+        [%{_id: "id1", field: "value1"}, %{_id: "id2", field: "value2"}]
+      )
+      {:ok, [%{"id" => "id1", "ok" => true, "rev" => "1-rev1"}, %{"id" => "id2", "ok" => true, "rev" => "1-rev2"}]}
+
+  """
+  def bulk_insert_docs(database, docs) do
+    post("/#{database}/_bulk_docs", %{docs: docs})
+    |> handle_bulk_insert_response()
+  end
+
+  defp handle_bulk_insert_response({:ok, %Tesla.Env{status: 201, body: rows}}) do
+    if Enum.any?(rows, & &1["error"]) do
+      Logger.warning("Bulk insertion did not complete for some documents: #{inspect(rows)}")
+      grouped = Enum.group_by(rows, &(&1["error"] || "ok"))
+      {:error, grouped}
+    else
+      {:ok, rows}
+    end
+  end
+
+  defp handle_bulk_insert_response({:ok, %Tesla.Env{body: body}}), do: {:error, body}
+  defp handle_bulk_insert_response({_, error}), do: {:error, error}
+
+  def create_database(database) do
+    case put("/#{database}", []) do
+      {:ok, %Tesla.Env{status: 201, body: body}} ->
+        {:ok, body}
+
+      {:ok, %Tesla.Env{body: body}} ->
+        {:error, body}
+
+      {_, what} ->
+        {:error, what}
+    end
+  end
 end
