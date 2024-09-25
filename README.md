@@ -53,6 +53,22 @@ See [the tests](/test/predicate_test.exs) for more examples.
 
 **Note**: the task purge.docs will also call the `/<database>/_compact` and `<database>/_view_cleanup` endpoints once is done.
 
+### Compact/Cleanup documents
+
+It calls `<database>/_compact` and `<database>/_view_cleanup` API.
+
+If `doc1` is provided, it will also call `<database>/_compact/doc1`, `<database>/_compact/doc2`, etc.
+
+
+```bash
+mix purge.clean database_name
+```
+or
+
+```bash
+mix purge.clean database_name doc1 doc2
+```
+
 
 ## API Usage
 

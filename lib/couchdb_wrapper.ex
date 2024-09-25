@@ -265,24 +265,35 @@ defmodule CouchdbWrapper do
   API: `POST /{database}/_compact`
   """
   def compact(database) do
-    # FIXME handle result here, result is supposed to be 202
-    post("/#{database}/_compact", [])
+    url = "/#{database}/_compact"
+    Logger.debug("_compact url: #{url}")
+    perform_call(url)
   end
 
   @doc ~S"""
   API: `POST /{database}/_compact/{design_doc}`
   """
   def compact(database, design_doc) do
-    # FIXME handle result here, result is supposed to be 202
-    post("/#{database}/_compact/#{design_doc}", [])
+    url = "/#{database}/_compact/#{design_doc}"
+    Logger.debug("_compact url: #{url}")
+    perform_call(url)
   end
 
   @doc ~S"""
   API: `POST /{database}/_view_cleanup/`
   """
   def cleanup(database) do
-    # FIXME handle result here, result is supposed to be 202
-    post("/#{database}/_view_cleanup", [])
+    url = "/#{database}/_view_cleanup"
+    Logger.debug("_compact url: #{url}")
+    perform_call(url)
+  end
+
+  defp perform_call(url, exp_status \\ 202) do
+    case post(url, []) do
+      {:ok, %Tesla.Env{status: ^exp_status}} -> {:ok, %{}}
+      {:ok, %Tesla.Env{status: 404}} -> {:error, :not_found}
+      {_, what} -> {:error, what}
+    end
   end
 
   @doc ~S"""
