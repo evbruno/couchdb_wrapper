@@ -59,7 +59,6 @@ It calls `<database>/_compact` and `<database>/_view_cleanup` API.
 
 If `doc1` is provided, it will also call `<database>/_compact/doc1`, `<database>/_compact/doc2`, etc.
 
-
 ```bash
 mix purge.clean database_name
 ```
@@ -68,7 +67,6 @@ or
 ```bash
 mix purge.clean database_name doc1 doc2
 ```
-
 
 ## API Usage
 
@@ -126,4 +124,43 @@ CouchdbWrapper.all_docs_stream("my_db") |> Stream.drop(1) |> Enum.take(1) |> hd
   "key" => "key2",
   "value" => %{"rev" => "1-a8e1c735ccd4a2f2feac239c7e307aff"}
 }
+```
+
+## Copy and Pasta
+
+```yaml
+# docker compose up
+version: '3'
+services:
+  couchdb:
+    image: couchdb:latest
+    ports:
+      - "5984:5984"
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=admin
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+
+volumes:
+  couchdb_data:
+```
+
+Create a bunch of docs
+
+```elixir
+# iex -S mix
+database = "my-cool-db"
+{:ok, _} = CouchdbWrapper.create_database(database)
+
+(
+  (1..10_000)
+  |> Stream.chunk_every(100)
+  |> Stream.each(fn idx -> 
+    # we can use index as the document "_id" `%{_id: to_string(i)`
+    docs = idx |> Enum.map(fn i -> %{id: to_string(i), index: i, foo: "bar"} end)
+    {:ok, _} = CouchdbWrapper.bulk_insert_docs(database, docs)
+  end)
+  |> Stream.run()
+)
 ```

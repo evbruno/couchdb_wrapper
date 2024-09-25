@@ -51,7 +51,6 @@ defmodule CouchdbWrapper do
   Loads all docs from CouchDB, paginating as a stream.
 
   See `all_docs/2` for more details.
-
   """
   def all_docs_stream(database, options \\ []) do
     Stream.resource(
@@ -100,7 +99,6 @@ defmodule CouchdbWrapper do
 
       iex> CouchdbWrapper.all_docs("my_database")
       {:ok, %CouchdbWrapper.PageResponse{...}}
-
   """
   def all_docs(database, options \\ []) do
     url = build_all_docs_url(database, options)
@@ -127,16 +125,10 @@ defmodule CouchdbWrapper do
     {:error, %AllDocs{error: res}}
   end
 
-  #  if empty or single row, we are done
   defp handle_last_page_all_docs([], _options, response) do
     Logger.debug("Loaded empty last page single row, total_rows: #{response.total_rows}")
     {:ok, %AllDocs{}}
   end
-
-  # defp handle_last_page_all_docs([_], _options, response) do
-  #   Logger.debug("Loaded last page single row, total_rows: #{response.total_rows}")
-  #   {:ok, %AllDocs{}}
-  # end
 
   defp handle_last_page_all_docs(rows, options, response) do
     Logger.debug("Loaded all_docs rows: #{length(rows)}")
@@ -185,18 +177,9 @@ defmodule CouchdbWrapper do
 
       iex> CouchdbWrapper.bulk_delete_docs(
         "database_name",
-        [ CouchdbWrapper.IdAndRev.new("id1", "1-rev1") ]
+        [CouchdbWrapper.IdAndRev.new("id1", "1-rev1")]
       )
-
-      {:ok,
-       [
-        %{
-          "id" => "id1",
-          "ok" => true,
-          "rev" => "2-rev2"
-        }
-      ]}
-
+      {:ok, [%{"id" => "id1", "ok" => true, "rev" => "2-rev2"}]}
   """
   def bulk_delete_docs(database, ids_and_revs) do
     data =
@@ -235,14 +218,9 @@ defmodule CouchdbWrapper do
 
       iex> CouchdbWrapper.bulk_purge_docs(
         "database_name",
-        %{
-          "id1": ["1-rev1"],
-          "id2": ["2-rev"]
-        }
+        %{"id1": ["1-rev1"], "id2": ["2-rev"]}
       )
-
       {:ok, %{"id1" => ["2-rev2"], "id2" => ["2-rev2"]}}
-
   """
   def bulk_purge_docs(_, [rows_to_delete]) when map_size(rows_to_delete) > 100,
     do: {:error, "Too many rows to delete"}
@@ -289,7 +267,7 @@ defmodule CouchdbWrapper do
   end
 
   defp perform_call(url, exp_status \\ 202) do
-    case post(url, []) do
+    case (post(url, []) |> IO.inspect(label: "action")) do
       {:ok, %Tesla.Env{status: ^exp_status}} -> {:ok, %{}}
       {:ok, %Tesla.Env{status: 404}} -> {:error, :not_found}
       {_, what} -> {:error, what}
@@ -306,7 +284,6 @@ defmodule CouchdbWrapper do
     * `:limit` (integer) defaults to 100
     * `:include_docs?` (boolean) - defaults to `true`
     * `:last_seq` (string) - start key for the query (maps to `last-event-id`)
-
   """
   def changes(database, options \\ [include_docs?: false]) do
     url = build_changes_url(database, options)
@@ -367,13 +344,11 @@ defmodule CouchdbWrapper do
   Loads all changes from CouchDB, paginating as a stream.
 
   See `changes/2` for more details.
-
   """
   def changes_stream(database, options \\ [include_docs?: false]) do
     Stream.resource(
       fn -> {:start, nil} end,
       fn el ->
-        # IO.inspect(el, label: "stream.el")
         case el do
           {:start, _} ->
             handle_changes_stream(options, database)
@@ -429,12 +404,14 @@ defmodule CouchdbWrapper do
 
   """
   def bulk_insert_docs(database, docs) do
-    post("/#{database}/_bulk_docs", %{docs: docs})
+    url = "/#{database}/_bulk_docs"
+    Logger.debug("bulk_insert_docs url: #{url}")
+    post(url, %{docs: docs})
     |> handle_bulk_insert_response()
   end
 
   defp handle_bulk_insert_response({:ok, %Tesla.Env{status: 201, body: rows}}) do
-    if Enum.any?(rows, & &1["error"]) do
+    if Enum.any?(rows, &(&1["error"])) do
       Logger.warning("Bulk insertion did not complete for some documents: #{inspect(rows)}")
       grouped = Enum.group_by(rows, &(&1["error"] || "ok"))
       {:error, grouped}
@@ -446,6 +423,27 @@ defmodule CouchdbWrapper do
   defp handle_bulk_insert_response({:ok, %Tesla.Env{body: body}}), do: {:error, body}
   defp handle_bulk_insert_response({_, error}), do: {:error, error}
 
+  @doc """
+  Creates a new database with the given name.
+
+  ## Parameters
+
+    - `database`: The name of the database to be created.
+
+  ## Returns
+
+    - `{:ok, body}` if the database is successfully created.
+    - `{:error, body}` if there is an error in the request.
+    - `{:error, what}` for any other errors.
+
+  ## Examples
+
+      iex> CouchDBWrapper.create_database("my_database")
+      {:ok, %{"ok" => true}}
+
+      iex> CouchDBWrapper.create_database("existing_database")
+      {:error, %{"error" => "file_exists", "reason" => "The database could not be created, the file already exists."}}
+  """
   def create_database(database) do
     case put("/#{database}", []) do
       {:ok, %Tesla.Env{status: 201, body: body}} ->
