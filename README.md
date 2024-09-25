@@ -1,3 +1,5 @@
+![workflow status](https://github.com/evbruno/couchdb_wrapper/actions/workflows/elixir.yml/badge.svg)
+
 # CouchdbWrapper
 
 ## Description
